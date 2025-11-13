@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "outDir": "dist",
+    "types": ["node", "mocha", "chai", "hardhat"]
+  },
+  "include": ["./scripts", "./test", "./hardhat.config.ts", "typechain-types"]
+}
