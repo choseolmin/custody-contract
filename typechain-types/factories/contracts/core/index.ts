@@ -3,5 +3,6 @@
 /* eslint-disable */
 export * as base from "./base";
 export { ColdVault__factory } from "./ColdVault__factory";
+export { MerkleAnchor__factory } from "./MerkleAnchor__factory";
 export { OmnibusVault__factory } from "./OmnibusVault__factory";
 export { PolicyGuard__factory } from "./PolicyGuard__factory";

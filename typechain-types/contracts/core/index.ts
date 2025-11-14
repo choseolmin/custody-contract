@@ -4,5 +4,6 @@
 import type * as base from "./base";
 export type { base };
 export type { ColdVault } from "./ColdVault";
+export type { MerkleAnchor } from "./MerkleAnchor";
 export type { OmnibusVault } from "./OmnibusVault";
 export type { PolicyGuard } from "./PolicyGuard";
