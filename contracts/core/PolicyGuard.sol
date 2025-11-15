@@ -1,103 +1,180 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-
-library Types {
-    struct DailyLimit {
-        uint256 max;     // 일일 한도
-        uint256 spent;   // 오늘 사용량
-        uint64  dayKey;  // floor(block.timestamp / 86400)
-    }
-}
+import {AdminSeats} from "./base/AdminSeats.sol";
+import {IPolicyGuard} from "../interfaces/IPolicyGuard.sol";
 
 /**
- * @title PolicyGuard
- * @notice ETH Only 정책 가드: Per-user WL + Per-user Daily Limit(+옵션 Global Cap)
+ * @title PolicyGuard (v2)
+ * @notice
+ * - Owner(배포자): Manager 추가/삭제 + 모든 정책 변경 가능
+ * - Manager: 정책 변경 가능(Owner가 grantManager로 권한 부여)
+ * - OmnibusVault.execute() 에서 check(...) 를 호출해 최종 출금 검증
+ *
+ * ETH Only 프로젝트이므로 token 파라미터는 항상 address(0) 으로 가정.
  */
-contract PolicyGuard is Ownable {
-    // userKey => (to => allowed)
+contract PolicyGuard is AdminSeats, IPolicyGuard {
+    // ─────────────────────────────
+    // Storage
+    // ─────────────────────────────
+
+    /// @notice Per-user whitelist: userKey → (to → allowed)
     mapping(bytes32 => mapping(address => bool)) public userWL;
-    // userKey => Daily
-    mapping(bytes32 => Types.DailyLimit) public userDailyETH;
-    // 0이면 미사용. >0 이면 출금 1회 글로벌 상한
+
+    /// @notice Per-user ETH daily limit (UTC day 기준)
+    struct Daily {
+        uint256 max;    // 일일 한도 (0이면 무제한)
+        uint256 spent;  // 해당 dayKey에서 이미 사용한 양
+        uint64  dayKey; // floor(block.timestamp / 86400)
+    }
+
+    mapping(bytes32 => Daily) public userDailyETH;
+
+    /// @notice 글로벌 MaxCap (1회 출금 상한, 0이면 미사용)
     uint256 public maxCapETH;
+
+    // ─────────────────────────────
+    // Events
+    // ─────────────────────────────
 
     event UserWLUpdated(bytes32 indexed userKey, address indexed to, bool allowed);
     event UserDailyLimitUpdated(bytes32 indexed userKey, uint256 max);
     event MaxCapUpdated(uint256 cap);
 
-    // ───── 커스텀 에러(테스트에서는 generic revert로 검증해도 OK)
-    error TOKEN_NOT_ALLOWED();   // token != address(0)
-    error WL_FORBIDDEN();        // WL 미포함
-    error OVER_GLOBAL_CAP();     // maxCapETH 초과
-    error OVER_DAILY_LIMIT();    // 일일 한도 초과
+    // ─────────────────────────────
+    // Custom Errors (정책 위반 사유 구분용)
+    // ─────────────────────────────
 
-    constructor(address initialOwner) Ownable(initialOwner) {}
+    error WLForbidden(address to);
+    error OverDailyLimit(bytes32 userKey, uint256 max, uint256 spent, uint256 amount);
+    error OverGlobalCap(uint256 maxCap, uint256 amount);
 
-    // ─────────────────────────────────────────────────────────────
-    // 관리 함수
-    function setUserWL(bytes32 userKey, address to) external onlyOwner {
+    // ─────────────────────────────
+    // Constructor
+    // ─────────────────────────────
+
+    constructor(address initialOwner) AdminSeats(initialOwner) {}
+
+    // ─────────────────────────────
+    // Internal helpers
+    // ─────────────────────────────
+
+    function _currentDayKey() internal view returns (uint64) {
+        return uint64(block.timestamp / 1 days);
+    }
+
+    function _rollover(bytes32 userKey) internal {
+        Daily storage d = userDailyETH[userKey];
+        uint64 today = _currentDayKey();
+        if (d.dayKey != today) {
+            d.dayKey = today;
+            d.spent = 0;
+        }
+    }
+
+    // ─────────────────────────────
+    // Policy 관리 함수 (Owner 또는 Manager 전용)
+    // ─────────────────────────────
+
+    /// @notice 출금 가능 주소 추가 (Whitelist ON)
+    function setUserWL(bytes32 userKey, address to) external onlyManagerOrOwner {
         userWL[userKey][to] = true;
         emit UserWLUpdated(userKey, to, true);
     }
 
-    function unsetUserWL(bytes32 userKey, address to) external onlyOwner {
+    /// @notice 출금 가능 주소 제거 (Whitelist OFF)
+    function unsetUserWL(bytes32 userKey, address to) external onlyManagerOrOwner {
         userWL[userKey][to] = false;
         emit UserWLUpdated(userKey, to, false);
     }
 
-    function setUserDailyLimit(bytes32 userKey, uint256 max) external onlyOwner {
-        userDailyETH[userKey].max = max;
+    /// @notice 해당 userKey의 일일 출금 한도 설정 (0이면 무제한)
+    function setUserDailyLimit(bytes32 userKey, uint256 max) external onlyManagerOrOwner {
+        Daily storage d = userDailyETH[userKey];
+        d.max = max;
+        // dayKey, spent는 그대로 두고, 다음 check() 시 rollover 로 리셋 가능
         emit UserDailyLimitUpdated(userKey, max);
     }
 
-    function setMaxCapETH(uint256 cap) external onlyOwner {
+    /// @notice 글로벌 1회 출금 상한 설정 (0이면 미사용)
+    function setMaxCapETH(uint256 cap) external onlyManagerOrOwner {
         maxCapETH = cap;
         emit MaxCapUpdated(cap);
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // 조회용: 상태 변경 X
+    // ─────────────────────────────
+    // 조회용 (UX, 사전 시뮬레이션)
+    // ─────────────────────────────
+
+    /**
+     * @notice 사전에 출금 가능 여부를 조회하는 view 함수 (상태 변경 없음)
+     * @dev OmnibusVault.execute() 는 이 함수를 쓰지 않고, check(...)를 사용.
+     */
     function checkView(
         address to,
-        address token,
+        address /* token */,
         uint256 amount,
         bytes32 userKey
     ) external view returns (bool) {
-        if (token != address(0)) return false;                 // ETH Only
-        if (!userWL[userKey][to]) return false;                // WL 필수
-        if (maxCapETH > 0 && amount > maxCapETH) return false; // 글로벌 캡
+        // 1) WL 검사
+        if (!userWL[userKey][to]) {
+            return false;
+        }
 
-        Types.DailyLimit memory d = userDailyETH[userKey];
-        uint64 today = uint64(block.timestamp / 86400);
-        uint256 spent = (d.dayKey == today) ? d.spent : 0;
+        // 2) Daily Limit (롤오버 고려)
+        Daily storage d = userDailyETH[userKey];
+        uint64 today = _currentDayKey();
+        uint256 spentToday = (d.dayKey == today) ? d.spent : 0;
 
-        if (d.max == 0) return false;                          // 한도 미설정은 차단
-        if (spent + amount > d.max) return false;              // 일일 한도
+        if (d.max > 0 && spentToday + amount > d.max) {
+            return false;
+        }
+
+        // 3) Global MaxCap
+        if (maxCapETH > 0 && amount > maxCapETH) {
+            return false;
+        }
 
         return true;
     }
 
-    // 실행용: 카운터 증가. 실패 시 커스텀 에러로 revert
+    // ─────────────────────────────
+    // 실행용 check (OmnibusVault 에서 호출)
+    // ─────────────────────────────
+
+    /**
+     * @notice 실제 출금 직전에 OmnibusVault.execute() 에서 호출되는 함수
+     * @dev
+     *  - 조건 위반 시 custom error로 revert
+     *  - 통과 시 userDailyETH[userKey].spent 를 증가시키고 true 반환
+     */
     function check(
         address to,
-        address token,
+        address /* token */,
         uint256 amount,
         bytes32 userKey
     ) external returns (bool) {
-        if (token != address(0)) revert TOKEN_NOT_ALLOWED();   // ETH Only
-        if (!userWL[userKey][to]) revert WL_FORBIDDEN();       // WL 필수
-        if (maxCapETH > 0 && amount > maxCapETH) revert OVER_GLOBAL_CAP();
+        // 1) WL 검사
+        if (!userWL[userKey][to]) {
+            revert WLForbidden(to);
+        }
 
-        Types.DailyLimit storage d = userDailyETH[userKey];
-        uint64 today = uint64(block.timestamp / 86400);
-        if (d.dayKey != today) { d.dayKey = today; d.spent = 0; }
+        // 2) Daily Limit 롤오버 + 사용량 증가 검사
+        _rollover(userKey);
+        Daily storage d = userDailyETH[userKey];
 
-        // 일일 한도 미설정(=0) 또는 초과 시 거부
-        if (d.max == 0 || d.spent + amount > d.max) revert OVER_DAILY_LIMIT();
+        if (d.max > 0 && d.spent + amount > d.max) {
+            revert OverDailyLimit(userKey, d.max, d.spent, amount);
+        }
 
-        d.spent += amount; // 승인 시 증가
+        // 3) Global MaxCap 검사
+        if (maxCapETH > 0 && amount > maxCapETH) {
+            revert OverGlobalCap(maxCapETH, amount);
+        }
+
+        // 4) 상태 업데이트
+        d.spent += amount;
+
         return true;
     }
 }

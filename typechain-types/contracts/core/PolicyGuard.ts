@@ -26,12 +26,19 @@ import type {
 export interface PolicyGuardInterface extends Interface {
   getFunction(
     nameOrSignature:
+      | "acceptOwnership"
       | "check"
       | "checkView"
+      | "grantManager"
+      | "isManager"
+      | "isTss"
       | "maxCapETH"
       | "owner"
+      | "pendingOwner"
       | "renounceOwnership"
+      | "seatATss"
       | "setMaxCapETH"
+      | "setTss"
       | "setUserDailyLimit"
       | "setUserWL"
       | "transferOwnership"
@@ -42,12 +49,19 @@ export interface PolicyGuardInterface extends Interface {
 
   getEvent(
     nameOrSignatureOrTopic:
+      | "ManagerSet"
       | "MaxCapUpdated"
+      | "OwnershipTransferStarted"
       | "OwnershipTransferred"
+      | "TssSet"
       | "UserDailyLimitUpdated"
       | "UserWLUpdated"
   ): EventFragment;
 
+  encodeFunctionData(
+    functionFragment: "acceptOwnership",
+    values?: undefined
+  ): string;
   encodeFunctionData(
     functionFragment: "check",
     values: [AddressLike, AddressLike, BigNumberish, BytesLike]
@@ -56,16 +70,31 @@ export interface PolicyGuardInterface extends Interface {
     functionFragment: "checkView",
     values: [AddressLike, AddressLike, BigNumberish, BytesLike]
   ): string;
+  encodeFunctionData(
+    functionFragment: "grantManager",
+    values: [AddressLike, boolean]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "isManager",
+    values: [AddressLike]
+  ): string;
+  encodeFunctionData(functionFragment: "isTss", values: [AddressLike]): string;
   encodeFunctionData(functionFragment: "maxCapETH", values?: undefined): string;
   encodeFunctionData(functionFragment: "owner", values?: undefined): string;
+  encodeFunctionData(
+    functionFragment: "pendingOwner",
+    values?: undefined
+  ): string;
   encodeFunctionData(
     functionFragment: "renounceOwnership",
     values?: undefined
   ): string;
+  encodeFunctionData(functionFragment: "seatATss", values?: undefined): string;
   encodeFunctionData(
     functionFragment: "setMaxCapETH",
     values: [BigNumberish]
   ): string;
+  encodeFunctionData(functionFragment: "setTss", values: [AddressLike]): string;
   encodeFunctionData(
     functionFragment: "setUserDailyLimit",
     values: [BytesLike, BigNumberish]
@@ -91,18 +120,34 @@ export interface PolicyGuardInterface extends Interface {
     values: [BytesLike, AddressLike]
   ): string;
 
+  decodeFunctionResult(
+    functionFragment: "acceptOwnership",
+    data: BytesLike
+  ): Result;
   decodeFunctionResult(functionFragment: "check", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "checkView", data: BytesLike): Result;
+  decodeFunctionResult(
+    functionFragment: "grantManager",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(functionFragment: "isManager", data: BytesLike): Result;
+  decodeFunctionResult(functionFragment: "isTss", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "maxCapETH", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "owner", data: BytesLike): Result;
+  decodeFunctionResult(
+    functionFragment: "pendingOwner",
+    data: BytesLike
+  ): Result;
   decodeFunctionResult(
     functionFragment: "renounceOwnership",
     data: BytesLike
   ): Result;
+  decodeFunctionResult(functionFragment: "seatATss", data: BytesLike): Result;
   decodeFunctionResult(
     functionFragment: "setMaxCapETH",
     data: BytesLike
   ): Result;
+  decodeFunctionResult(functionFragment: "setTss", data: BytesLike): Result;
   decodeFunctionResult(
     functionFragment: "setUserDailyLimit",
     data: BytesLike
@@ -123,11 +168,37 @@ export interface PolicyGuardInterface extends Interface {
   decodeFunctionResult(functionFragment: "userWL", data: BytesLike): Result;
 }
 
+export namespace ManagerSetEvent {
+  export type InputTuple = [manager: AddressLike, allowed: boolean];
+  export type OutputTuple = [manager: string, allowed: boolean];
+  export interface OutputObject {
+    manager: string;
+    allowed: boolean;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
+}
+
 export namespace MaxCapUpdatedEvent {
   export type InputTuple = [cap: BigNumberish];
   export type OutputTuple = [cap: bigint];
   export interface OutputObject {
     cap: bigint;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
+}
+
+export namespace OwnershipTransferStartedEvent {
+  export type InputTuple = [previousOwner: AddressLike, newOwner: AddressLike];
+  export type OutputTuple = [previousOwner: string, newOwner: string];
+  export interface OutputObject {
+    previousOwner: string;
+    newOwner: string;
   }
   export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
   export type Filter = TypedDeferredTopicFilter<Event>;
@@ -141,6 +212,18 @@ export namespace OwnershipTransferredEvent {
   export interface OutputObject {
     previousOwner: string;
     newOwner: string;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
+}
+
+export namespace TssSetEvent {
+  export type InputTuple = [tss: AddressLike];
+  export type OutputTuple = [tss: string];
+  export interface OutputObject {
+    tss: string;
   }
   export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
   export type Filter = TypedDeferredTopicFilter<Event>;
@@ -222,10 +305,12 @@ export interface PolicyGuard extends BaseContract {
     event?: TCEvent
   ): Promise<this>;
 
+  acceptOwnership: TypedContractMethod<[], [void], "nonpayable">;
+
   check: TypedContractMethod<
     [
       to: AddressLike,
-      token: AddressLike,
+      arg1: AddressLike,
       amount: BigNumberish,
       userKey: BytesLike
     ],
@@ -236,7 +321,7 @@ export interface PolicyGuard extends BaseContract {
   checkView: TypedContractMethod<
     [
       to: AddressLike,
-      token: AddressLike,
+      arg1: AddressLike,
       amount: BigNumberish,
       userKey: BytesLike
     ],
@@ -244,13 +329,29 @@ export interface PolicyGuard extends BaseContract {
     "view"
   >;
 
+  grantManager: TypedContractMethod<
+    [manager: AddressLike, allowed: boolean],
+    [void],
+    "nonpayable"
+  >;
+
+  isManager: TypedContractMethod<[a: AddressLike], [boolean], "view">;
+
+  isTss: TypedContractMethod<[a: AddressLike], [boolean], "view">;
+
   maxCapETH: TypedContractMethod<[], [bigint], "view">;
 
   owner: TypedContractMethod<[], [string], "view">;
 
+  pendingOwner: TypedContractMethod<[], [string], "view">;
+
   renounceOwnership: TypedContractMethod<[], [void], "nonpayable">;
 
+  seatATss: TypedContractMethod<[], [string], "view">;
+
   setMaxCapETH: TypedContractMethod<[cap: BigNumberish], [void], "nonpayable">;
+
+  setTss: TypedContractMethod<[tss: AddressLike], [void], "nonpayable">;
 
   setUserDailyLimit: TypedContractMethod<
     [userKey: BytesLike, max: BigNumberish],
@@ -293,11 +394,14 @@ export interface PolicyGuard extends BaseContract {
   ): T;
 
   getFunction(
+    nameOrSignature: "acceptOwnership"
+  ): TypedContractMethod<[], [void], "nonpayable">;
+  getFunction(
     nameOrSignature: "check"
   ): TypedContractMethod<
     [
       to: AddressLike,
-      token: AddressLike,
+      arg1: AddressLike,
       amount: BigNumberish,
       userKey: BytesLike
     ],
@@ -309,7 +413,7 @@ export interface PolicyGuard extends BaseContract {
   ): TypedContractMethod<
     [
       to: AddressLike,
-      token: AddressLike,
+      arg1: AddressLike,
       amount: BigNumberish,
       userKey: BytesLike
     ],
@@ -317,17 +421,39 @@ export interface PolicyGuard extends BaseContract {
     "view"
   >;
   getFunction(
+    nameOrSignature: "grantManager"
+  ): TypedContractMethod<
+    [manager: AddressLike, allowed: boolean],
+    [void],
+    "nonpayable"
+  >;
+  getFunction(
+    nameOrSignature: "isManager"
+  ): TypedContractMethod<[a: AddressLike], [boolean], "view">;
+  getFunction(
+    nameOrSignature: "isTss"
+  ): TypedContractMethod<[a: AddressLike], [boolean], "view">;
+  getFunction(
     nameOrSignature: "maxCapETH"
   ): TypedContractMethod<[], [bigint], "view">;
   getFunction(
     nameOrSignature: "owner"
   ): TypedContractMethod<[], [string], "view">;
   getFunction(
+    nameOrSignature: "pendingOwner"
+  ): TypedContractMethod<[], [string], "view">;
+  getFunction(
     nameOrSignature: "renounceOwnership"
   ): TypedContractMethod<[], [void], "nonpayable">;
   getFunction(
+    nameOrSignature: "seatATss"
+  ): TypedContractMethod<[], [string], "view">;
+  getFunction(
     nameOrSignature: "setMaxCapETH"
   ): TypedContractMethod<[cap: BigNumberish], [void], "nonpayable">;
+  getFunction(
+    nameOrSignature: "setTss"
+  ): TypedContractMethod<[tss: AddressLike], [void], "nonpayable">;
   getFunction(
     nameOrSignature: "setUserDailyLimit"
   ): TypedContractMethod<
@@ -368,6 +494,13 @@ export interface PolicyGuard extends BaseContract {
   >;
 
   getEvent(
+    key: "ManagerSet"
+  ): TypedContractEvent<
+    ManagerSetEvent.InputTuple,
+    ManagerSetEvent.OutputTuple,
+    ManagerSetEvent.OutputObject
+  >;
+  getEvent(
     key: "MaxCapUpdated"
   ): TypedContractEvent<
     MaxCapUpdatedEvent.InputTuple,
@@ -375,11 +508,25 @@ export interface PolicyGuard extends BaseContract {
     MaxCapUpdatedEvent.OutputObject
   >;
   getEvent(
+    key: "OwnershipTransferStarted"
+  ): TypedContractEvent<
+    OwnershipTransferStartedEvent.InputTuple,
+    OwnershipTransferStartedEvent.OutputTuple,
+    OwnershipTransferStartedEvent.OutputObject
+  >;
+  getEvent(
     key: "OwnershipTransferred"
   ): TypedContractEvent<
     OwnershipTransferredEvent.InputTuple,
     OwnershipTransferredEvent.OutputTuple,
     OwnershipTransferredEvent.OutputObject
+  >;
+  getEvent(
+    key: "TssSet"
+  ): TypedContractEvent<
+    TssSetEvent.InputTuple,
+    TssSetEvent.OutputTuple,
+    TssSetEvent.OutputObject
   >;
   getEvent(
     key: "UserDailyLimitUpdated"
@@ -397,6 +544,17 @@ export interface PolicyGuard extends BaseContract {
   >;
 
   filters: {
+    "ManagerSet(address,bool)": TypedContractEvent<
+      ManagerSetEvent.InputTuple,
+      ManagerSetEvent.OutputTuple,
+      ManagerSetEvent.OutputObject
+    >;
+    ManagerSet: TypedContractEvent<
+      ManagerSetEvent.InputTuple,
+      ManagerSetEvent.OutputTuple,
+      ManagerSetEvent.OutputObject
+    >;
+
     "MaxCapUpdated(uint256)": TypedContractEvent<
       MaxCapUpdatedEvent.InputTuple,
       MaxCapUpdatedEvent.OutputTuple,
@@ -408,6 +566,17 @@ export interface PolicyGuard extends BaseContract {
       MaxCapUpdatedEvent.OutputObject
     >;
 
+    "OwnershipTransferStarted(address,address)": TypedContractEvent<
+      OwnershipTransferStartedEvent.InputTuple,
+      OwnershipTransferStartedEvent.OutputTuple,
+      OwnershipTransferStartedEvent.OutputObject
+    >;
+    OwnershipTransferStarted: TypedContractEvent<
+      OwnershipTransferStartedEvent.InputTuple,
+      OwnershipTransferStartedEvent.OutputTuple,
+      OwnershipTransferStartedEvent.OutputObject
+    >;
+
     "OwnershipTransferred(address,address)": TypedContractEvent<
       OwnershipTransferredEvent.InputTuple,
       OwnershipTransferredEvent.OutputTuple,
@@ -417,6 +586,17 @@ export interface PolicyGuard extends BaseContract {
       OwnershipTransferredEvent.InputTuple,
       OwnershipTransferredEvent.OutputTuple,
       OwnershipTransferredEvent.OutputObject
+    >;
+
+    "TssSet(address)": TypedContractEvent<
+      TssSetEvent.InputTuple,
+      TssSetEvent.OutputTuple,
+      TssSetEvent.OutputObject
+    >;
+    TssSet: TypedContractEvent<
+      TssSetEvent.InputTuple,
+      TssSetEvent.OutputTuple,
+      TssSetEvent.OutputObject
     >;
 
     "UserDailyLimitUpdated(bytes32,uint256)": TypedContractEvent<
