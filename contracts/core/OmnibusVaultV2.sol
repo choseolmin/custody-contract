@@ -5,10 +5,14 @@ import {AdminSeats} from "./base/AdminSeats.sol";
 import {IPolicyGuard} from "../interfaces/IPolicyGuard.sol";
 
 /**
- * @title OmnibusVault
+ * @title OmnibusVaultV2
  * @notice TSS(Seat A) + Manager(Seat B, 고액 시) 2-of-2 승인 구조, ETH 전용
+ * @dev V1과의 차이:
+ *      - pause / setPolicyGuard / setColdVault / submitTx / execute 에
+ *        onlyManagerOrOwner 적용 (운영은 매니저/오너 모두 가능)
+ *      - Manager/TSS 추가/삭제 권한은 여전히 AdminSeats.onlyOwner 에만 있음
  */
-contract OmnibusVault is AdminSeats {
+contract OmnibusVaultV2 is AdminSeats {
     IPolicyGuard public policyGuard;
     bool public paused;
     uint256 public nonce;
@@ -74,17 +78,19 @@ contract OmnibusVault is AdminSeats {
     }
 
     // ── 운영 제어
-    function pause(bool v) external onlyOwner {
+    /// @dev 이제 관리자(Manager)도 pause 가능
+    function pause(bool v) external onlyManagerOrOwner {
         paused = v;
         emit Paused(v);
     }
 
-    function setPolicyGuard(address _p) external onlyOwner {
+    /// @dev PolicyGuard 주소 교체도 Manager/Owner 모두 가능 (원하면 onlyOwner로 다시 잠글 수도 있음)
+    function setPolicyGuard(address _p) external onlyManagerOrOwner {
         policyGuard = IPolicyGuard(_p);
     }
 
-    /// @notice ColdVault 주소 연결 (리밸런싱용, 운영 onlyOwner)
-    function setColdVault(address v) external onlyOwner {
+    /// @notice ColdVault 주소 연결 (리밸런싱용), Manager/Owner 모두 가능
+    function setColdVault(address v) external onlyManagerOrOwner {
         coldVault = v;
     }
 
@@ -109,9 +115,10 @@ contract OmnibusVault is AdminSeats {
     }
 
     // ── 출금 플로우
+    /// @dev 이제 Manager/Owner 모두 출금 신청 가능
     function submitTx(address to, uint256 amount, bytes32 userKey)
         external
-        onlyOwner
+        onlyManagerOrOwner
         notPaused
         returns (bytes32 txId)
     {
@@ -143,10 +150,11 @@ contract OmnibusVault is AdminSeats {
         }
     }
 
-    // 백엔드가 임계값 로직으로 승인 충족 후 호출
+    /// @dev 이제 Manager/Owner 모두 execute 가능
+    //      (소액: TSS 승인만, 고액: TSS + Manager 승인 필요 로직은 그대로 유지)
     function execute(bytes32 txId, uint256 smallTxThresholdWei)
         external
-        onlyOwner
+        onlyManagerOrOwner
         notPaused
     {
         Tx storage t = txs[txId];
@@ -158,8 +166,6 @@ contract OmnibusVault is AdminSeats {
         if (!ok) revert NotExecutable();
 
         // 🔹 정책 강제 검사
-        //    PolicyGuard 쪽에서 커스텀 에러(WL_FORBIDDEN, OVER_DAILY_LIMIT 등)로 리버트하므로
-        //    여기서는 bool/require 없이 그냥 호출만 한다.
         policyGuard.check(t.to, address(0), t.amount, t.userKey);
 
         t.executed = true;

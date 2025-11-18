@@ -54,13 +54,17 @@ declare module "hardhat/types/runtime" {
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.ColdVault__factory>;
     getContractFactory(
+      name: "ColdVault",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.ColdVault__factory>;
+    getContractFactory(
       name: "MerkleAnchor",
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.MerkleAnchor__factory>;
     getContractFactory(
-      name: "OmnibusVault",
+      name: "OmnibusVaultV2",
       signerOrOptions?: ethers.Signer | FactoryOptions
-    ): Promise<Contracts.OmnibusVault__factory>;
+    ): Promise<Contracts.OmnibusVaultV2__factory>;
     getContractFactory(
       name: "PolicyGuard",
       signerOrOptions?: ethers.Signer | FactoryOptions
@@ -129,15 +133,20 @@ declare module "hardhat/types/runtime" {
       signer?: ethers.Signer
     ): Promise<Contracts.ColdVault>;
     getContractAt(
+      name: "ColdVault",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.ColdVault>;
+    getContractAt(
       name: "MerkleAnchor",
       address: string | ethers.Addressable,
       signer?: ethers.Signer
     ): Promise<Contracts.MerkleAnchor>;
     getContractAt(
-      name: "OmnibusVault",
+      name: "OmnibusVaultV2",
       address: string | ethers.Addressable,
       signer?: ethers.Signer
-    ): Promise<Contracts.OmnibusVault>;
+    ): Promise<Contracts.OmnibusVaultV2>;
     getContractAt(
       name: "PolicyGuard",
       address: string | ethers.Addressable,
@@ -200,13 +209,17 @@ declare module "hardhat/types/runtime" {
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.ColdVault>;
     deployContract(
+      name: "ColdVault",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.ColdVault>;
+    deployContract(
       name: "MerkleAnchor",
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.MerkleAnchor>;
     deployContract(
-      name: "OmnibusVault",
+      name: "OmnibusVaultV2",
       signerOrOptions?: ethers.Signer | DeployContractOptions
-    ): Promise<Contracts.OmnibusVault>;
+    ): Promise<Contracts.OmnibusVaultV2>;
     deployContract(
       name: "PolicyGuard",
       signerOrOptions?: ethers.Signer | DeployContractOptions
@@ -275,15 +288,20 @@ declare module "hardhat/types/runtime" {
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.ColdVault>;
     deployContract(
+      name: "ColdVault",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.ColdVault>;
+    deployContract(
       name: "MerkleAnchor",
       args: any[],
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.MerkleAnchor>;
     deployContract(
-      name: "OmnibusVault",
+      name: "OmnibusVaultV2",
       args: any[],
       signerOrOptions?: ethers.Signer | DeployContractOptions
-    ): Promise<Contracts.OmnibusVault>;
+    ): Promise<Contracts.OmnibusVaultV2>;
     deployContract(
       name: "PolicyGuard",
       args: any[],

@@ -5,9 +5,25 @@ import {AdminSeats} from "./base/AdminSeats.sol";
 
 /**
  * @title ColdVault
- * @notice 보관 전용. 관리자 2/2 승인 후, 오직 OmnibusVault로만 이동.
- * - receive/fallback 직접 입금 차단(운영은 adminDeposit()으로만 적립)
- * - 관리자는 setColdAdmins로 두 주소를 등록, 반드시 서로 달라야 함
+ * @notice
+ *  - 보관 전용. 관리자 2/2 승인 후, 오직 OmnibusVault로만 이동.
+ *  - ETH Only
+ *  - 입금 경로:
+ *      1) adminDeposit(): Owner/Manager EOA가 직접 입금 (운영/테스트용)
+ *      2) OmnibusVault.execute() 에서 to=coldVault 로 ETH 송금
+ *         → receive()에서 msg.sender == omnibusVault 인 경우 허용
+ *      3) Manager EOA가 콜드볼트 주소로 직접 ETH 전송
+ *         → receive()에서 isManager(msg.sender) 인 경우 허용
+ *  - 출금 경로:
+ *      - executeMove()로만 콜드 → OmnibusVault 이동
+ *
+ * 변경점 (v2 개념):
+ *  - adminDeposit / pause / setOmnibusVault / setColdAdmins / executeMove
+ *    권한을 onlyOwner → onlyManagerOrOwner 로 완화
+ *  - receive()를 수정하여:
+ *      - omnibusVault에서 오는 ETH
+ *      - manager 주소에서 오는 ETH
+ *    두 가지 만 허용
  */
 contract ColdVault is AdminSeats {
     // --- 상태 ---
@@ -49,12 +65,32 @@ contract ColdVault is AdminSeats {
 
     constructor(address initialOwner) AdminSeats(initialOwner) {}
 
-    // 직접 ETH 전송 금지 (명시적 입금만 허용)
-    receive() external payable { revert DirectEthRejected(); }
-    fallback() external payable { revert DirectEthRejected(); }
+    // ─────────────────────────────
+    // ETH 수신: 옴니버스 or Manager EOA만 허용
+    // ─────────────────────────────
 
-    // 오너 전용 입금 함수(운영/테스트용). receive를 열지 않기 위해 별도 제공.
-    function adminDeposit() external payable onlyOwner {
+    /**
+     * @dev 허용 케이스:
+     *  - msg.sender == omnibusVault (옴니 → 콜드 리밸런싱)
+     *  - isManager(msg.sender) == true (매니저 지갑에서 직접 입금)
+     *
+     *  그 외 주소에서 보내는 ETH는 DirectEthRejected().
+     */
+    receive() external payable {
+        if (msg.sender != omnibusVault && !isManager(msg.sender)) {
+            revert DirectEthRejected();
+        }
+        if (msg.value == 0) revert ZeroAmount();
+        // no-op: 잔액만 적립
+    }
+
+    /// @dev 임의 data를 포함한 call은 허용하지 않음
+    fallback() external payable {
+        revert DirectEthRejected();
+    }
+
+    // 오너/매니저 전용 입금 함수(운영/테스트용). receive를 열지 않기 위해 별도 제공.
+    function adminDeposit() external payable onlyManagerOrOwner {
         if (msg.value == 0) revert ZeroAmount();
         // no-op: 잔액만 적립
     }
@@ -65,19 +101,21 @@ contract ColdVault is AdminSeats {
         _;
     }
 
-    function pause(bool v) external onlyOwner {
+    // pause 권한: Owner + Manager
+    function pause(bool v) external onlyManagerOrOwner {
         paused = v;
         emit Paused(v);
     }
 
     // --- 관리자/연결 설정 ---
-    /// @notice OmnibusVault 주소 연결(운영 onlyOwner)
-    function setOmnibusVault(address v) external onlyOwner {
+    /// @notice OmnibusVault 주소 연결(운영: Owner + Manager)
+    function setOmnibusVault(address v) external onlyManagerOrOwner {
         omnibusVault = v;
     }
 
     /// @notice ColdVault 전용 관리자 두 명 설정(반드시 서로 다른 non-zero)
-    function setColdAdmins(address _a1, address _a2) external onlyOwner {
+    /// @dev 이제 Owner + Manager 모두 설정 가능
+    function setColdAdmins(address _a1, address _a2) external onlyManagerOrOwner {
         if (_a1 == address(0) || _a2 == address(0) || _a1 == _a2) revert BadAdmins();
         admin1 = _a1;
         admin2 = _a2;
@@ -93,7 +131,7 @@ contract ColdVault is AdminSeats {
     }
 
     // --- 워크플로우 ---
-    /// @notice 이동 요청(관리자 or Owner)
+   /// @notice 이동 요청(관리자 or Owner) — 콜드 → 옴니로 보낼 양을 예약
     function requestMove(uint256 amount) external onlyManagerOrOwner notPaused returns (bytes32 moveId) {
         if (amount == 0) revert ZeroAmount();
         moveId = _computeMoveId(amount, nonce++);
@@ -130,8 +168,10 @@ contract ColdVault is AdminSeats {
         }
     }
 
-    /// @notice 실행(2/2 충족 + Omnibus 설정 필수). 운영상 오너 경로로 실행 권장.
-    function executeMove(bytes32 moveId) external onlyOwner notPaused {
+    /// @notice 실행(2/2 충족 + Omnibus 설정 필수).
+    /// @dev Owner + Manager 모두 실행 가능.
+    ///      콜드 → OmnibusVault로 ETH 이동.
+    function executeMove(bytes32 moveId) external onlyManagerOrOwner notPaused {
         Move storage m = moves[moveId];
         if (m.executed) revert AlreadyExecuted();
         if (!(m.approvedAdmin1 && m.approvedAdmin2)) revert NotExecutable();
